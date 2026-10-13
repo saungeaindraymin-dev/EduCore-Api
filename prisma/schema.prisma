@@ -1,0 +1,347 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  admin
+  teacher
+  student
+
+  @@map("role")
+}
+
+enum UserStatus {
+  active
+  inactive
+  pending
+
+  @@map("user_status")
+}
+
+enum OtpPurpose {
+  password_reset
+  email_verify
+
+  @@map("otp_purpose")
+}
+
+enum CourseStatus {
+  draft
+  published
+  inactive
+
+  @@map("course_status")
+}
+
+model User {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String     @unique(map: "users_email_unique") @db.VarChar(255)
+  passwordHash  String     @map("password_hash")
+  name          String     @db.VarChar(120)
+  role          Role       @default(student)
+  status        UserStatus @default(active)
+  emailVerified Boolean    @default(false) @map("email_verified")
+  avatarUrl     String?    @map("avatar_url")
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  taughtCourses  Course[]
+  enrollments    Enrollment[]
+  otpCodes       OtpCode[]
+  scheduleEvents ScheduleEvent[]
+  announcements  Announcement[]
+  assignments    Assignment[]
+  quizzes        Quiz[]
+  quizAttempts   QuizAttempt[]
+  submissions    Submission[]  @relation("SubmissionStudent")
+  gradedWork     Submission[]  @relation("SubmissionGrader")
+
+  @@index([email], map: "users_email_idx")
+  @@map("users")
+}
+
+model OtpCode {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String     @map("user_id") @db.Uuid
+  codeHash   String     @map("code_hash")
+  purpose    OtpPurpose
+  expiresAt  DateTime   @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime?  @map("consumed_at") @db.Timestamptz(6)
+  attempts   Int        @default(0)
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "otp_codes_user_id_users_id_fk")
+
+  @@index([userId], map: "otp_user_idx")
+  @@map("otp_codes")
+}
+
+model Course {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String       @db.VarChar(200)
+  description String?
+  code        String       @unique(map: "courses_code_unique") @db.VarChar(30)
+  category    String       @db.VarChar(60)
+  teacherId   String?      @map("teacher_id") @db.Uuid
+  status      CourseStatus @default(draft)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  teacher        User?           @relation(fields: [teacherId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "courses_teacher_id_users_id_fk")
+  enrollments    Enrollment[]
+  scheduleEvents ScheduleEvent[]
+  announcements  Announcement[]
+  lessons        Lesson[]
+  assignments    Assignment[]
+  quizzes        Quiz[]
+
+  @@index([teacherId])
+  @@index([status])
+  @@map("courses")
+}
+
+enum AssignmentStatus {
+  draft
+  published
+  closed
+
+  @@map("assignment_status")
+}
+
+enum QuizStatus {
+  draft
+  published
+  closed
+
+  @@map("quiz_status")
+}
+
+enum QuizQuestionType {
+  single
+  multiple
+  true_false
+
+  @@map("quiz_question_type")
+}
+
+enum EnrollmentStatus {
+  active
+  pending
+  dropped
+
+  @@map("enrollment_status")
+}
+
+model Enrollment {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId  String           @map("student_id") @db.Uuid
+  courseId   String           @map("course_id") @db.Uuid
+  status     EnrollmentStatus @default(active)
+  enrolledAt DateTime         @default(now()) @map("enrolled_at") @db.Timestamptz(6)
+
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "enrollments_student_id_users_id_fk")
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "enrollments_course_id_courses_id_fk")
+
+  @@unique([studentId, courseId])
+  @@index([courseId])
+  @@index([status])
+  @@map("enrollments")
+}
+
+model ScheduleEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId  String   @map("course_id") @db.Uuid
+  teacherId String?  @map("teacher_id") @db.Uuid
+  title     String   @db.VarChar(200)
+  startsAt  DateTime @map("starts_at") @db.Timestamptz(6)
+  endsAt    DateTime @map("ends_at") @db.Timestamptz(6)
+  location  String?  @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teacher User?  @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@index([startsAt])
+  @@index([courseId])
+  @@index([teacherId])
+  @@map("schedule_events")
+}
+
+enum AnnouncementAudience {
+  all
+  teachers
+  students
+  course
+
+  @@map("announcement_audience")
+}
+
+model Announcement {
+  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String               @db.VarChar(200)
+  body        String
+  audience    AnnouncementAudience @default(all)
+  courseId    String?              @map("course_id") @db.Uuid
+  publishedAt DateTime?            @map("published_at") @db.Timestamptz(6)
+  authorId    String?              @map("author_id") @db.Uuid
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  course Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  author User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([publishedAt])
+  @@index([courseId])
+  @@map("announcements")
+}
+
+
+model Assignment {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId    String           @map("course_id") @db.Uuid
+  title       String           @db.VarChar(200)
+  description String           @default("")
+  dueAt       DateTime?        @map("due_at") @db.Timestamptz(6)
+  totalPoints Int              @default(100) @map("total_points")
+  status      AssignmentStatus @default(draft)
+  createdById String?          @map("created_by") @db.Uuid
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  submissions Submission[]
+
+  @@index([courseId, dueAt])
+  @@index([status])
+  @@map("assignments")
+}
+
+
+model Submission {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assignmentId String    @map("assignment_id") @db.Uuid
+  studentId    String    @map("student_id") @db.Uuid
+  content      String    @default("")
+  score        Int?
+  feedback     String?
+  submittedAt  DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  gradedAt     DateTime? @map("graded_at") @db.Timestamptz(6)
+  gradedById   String?   @map("graded_by") @db.Uuid
+
+  assignment Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    User             @relation("SubmissionStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  gradedBy   User?            @relation("SubmissionGrader", fields: [gradedById], references: [id], onDelete: SetNull)
+  files      SubmissionFile[]
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId])
+  @@map("submissions")
+}
+
+
+model SubmissionFile {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  submissionId String   @map("submission_id") @db.Uuid
+  fileName     String   @map("file_name") @db.VarChar(255)
+  mimeType     String   @map("mime_type") @db.VarChar(120)
+  size         Int
+  storageKey   String   @unique @map("storage_key") @db.VarChar(200)
+  uploadedAt   DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@map("submission_files")
+}
+
+
+model Quiz {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId         String     @map("course_id") @db.Uuid
+  title            String     @db.VarChar(200)
+  description      String     @default("")
+  status           QuizStatus @default(draft)
+  dueAt            DateTime?  @map("due_at") @db.Timestamptz(6)
+  timeLimitMinutes Int?       @map("time_limit_minutes")
+  attemptsAllowed  Int        @default(1) @map("attempts_allowed")
+  createdById      String?    @map("created_by") @db.Uuid
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  course    Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@index([courseId, status])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id       String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quizId   String           @map("quiz_id") @db.Uuid
+  type     QuizQuestionType @default(single)
+  text     String
+  points   Int              @default(1)
+  position Int
+
+  quiz    Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options QuizOption[]
+
+  @@index([quizId, position])
+  @@map("quiz_questions")
+}
+
+model QuizOption {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  questionId String  @map("question_id") @db.Uuid
+  text       String
+  isCorrect  Boolean @default(false) @map("is_correct")
+  position   Int
+
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, position])
+  @@map("quiz_options")
+}
+
+
+model QuizAttempt {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quizId      String   @map("quiz_id") @db.Uuid
+  studentId   String   @map("student_id") @db.Uuid
+  score       Int
+  maxScore    Int      @map("max_score")
+  answers     Json
+  submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+
+  quiz    Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([quizId, studentId])
+  @@index([studentId])
+  @@map("quiz_attempts")
+}
+
+
+model Lesson {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId  String   @map("course_id") @db.Uuid
+  title     String   @db.VarChar(200)
+  content   String   @default("")
+  videoUrl  String?  @map("video_url") @db.VarChar(500)
+  position  Int
+  published Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, position])
+  @@map("lessons")
+}
