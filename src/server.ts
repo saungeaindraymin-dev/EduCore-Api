@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 
 import { env } from "@/config/env";
 import { notFound, errorHandler } from "@/middleware/error";
+import { checkMailer } from "@/utils/mailer";
 import api from "./route";
 
 const nodeMajor = Number(process.versions.node.split(".")[0]);
@@ -40,6 +41,14 @@ app.use("/api", (_req, res, next) => {
 app.use("/api", api);
 app.use(notFound);
 app.use(errorHandler);
+
+// Say up front whether mail can go out, and don't let production start if it can't.
+try {
+  await checkMailer();
+} catch (e) {
+  console.error(`✖ ${e instanceof Error ? e.message : e}`);
+  process.exit(1);
+}
 
 app.listen(env.PORT, () => {
   console.log(`🚀 EduCore API on http://localhost:${env.PORT}`);

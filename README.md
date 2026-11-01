@@ -29,7 +29,7 @@ The REST API behind EduCore, built from scratch with Express 5, Prisma 7 and Neo
 - **Validation:** Zod 4 (`validate(schema, "body" | "params")`)
 - **Auth:** jsonwebtoken + bcryptjs; Bearer token or `token` cookie
 - **Uploads:** multer 2 (memory storage) → a storage layer with an R2 seam
-- **Mail:** nodemailer over SMTP (one-time codes)
+- **Mail:** nodemailer over SMTP (one-time codes), with a no-provider fallback for development
 - **Hardening:** helmet, cors (credentials, single origin), morgan
 - **Package manager:** pnpm
 
@@ -93,11 +93,34 @@ DATABASE_URL=postgresql://…           # Neon, pooled
 JWT_SECRET=…                          # 32+ characters
 JWT_EXPIRES=7d
 CORS_ORIGIN=http://localhost:3000
+MAIL_TRANSPORT=auto                   # auto | smtp | log | ethereal — see Mail below
 SMTP_HOST=…  SMTP_PORT=465  SMTP_USER=…  SMTP_PASS=…  MAIL_FROM=…
 PORT=4000
 UPLOAD_DIR=uploads
 NODE_ENV=development
 ```
+
+Copy `.env.example` to `.env` to start. The mail settings may stay empty in development.
+
+### Mail
+
+One-time codes go out over SMTP, with a fallback so the forgotten-password journey
+works before a provider is set up. `MAIL_TRANSPORT` picks how:
+
+| | what happens |
+| --- | --- |
+| `auto` (default) | `smtp` when `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` are filled in with something that isn't an obvious placeholder, `log` otherwise |
+| `smtp` | real delivery; the only mode production will start in |
+| `log` | nothing is emailed: the code is printed in the API log, the mail is saved to `.mail/`, and the API hands the code back to the browser so the reset screens can fill it in. **Development only** |
+| `ethereal` | a throwaway inbox from nodemailer; the log prints a preview URL. No account needed, but it does need network |
+
+The API says which mode it is in at startup, and **refuses to start in production**
+unless mail is configured — a deploy without SMTP credentials fails loudly instead of
+silently swallowing password resets.
+
+With Resend: `SMTP_HOST=smtp.resend.com`, `SMTP_USER=resend`, `SMTP_PASS=<re_… API key>`.
+Until a domain is verified there, `MAIL_FROM` must be `EduCore <onboarding@resend.dev>`,
+and mail only reaches the address that owns the Resend account.
 
 Seeded accounts: `admin@educore.app` / `Admin@123`, `teacher@educore.app` / `Teacher@123`, `student@educore.app` / `Student@123`.
 

@@ -38,8 +38,14 @@ export const forgot = async (
   next: NextFunction,
 ) => {
   try {
-    await service.requestPasswordReset(req.body.email);
-    res.json({ ok: true, message: "If that email exists, a code was sent." });
+    // The spread is empty unless mail is going nowhere (development only) — see
+    // ResetRequestResult in auth.service.ts.
+    const delivery = await service.requestPasswordReset(req.body.email);
+    res.json({
+      ok: true,
+      message: "If that email exists, a code was sent.",
+      ...delivery,
+    });
   } catch (e) {
     next(e);
   }
